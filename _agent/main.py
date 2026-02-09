@@ -3,6 +3,8 @@ import sqlite3
 import subprocess
 import argparse
 import json
+import re
+from datetime import datetime
 from services.llm_provider import ClaudeCLIProvider, LLMProvider
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -10,52 +12,124 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 class BlogOrchestrator:
     def __init__(self, llm_engine: LLMProvider):
         self.db_path = os.path.join(BASE_DIR, "blog_agent.db")
+        # 이미 os.path.abspath로 초기화되어 있으므로 경로 검증 시 일관되게 사용
         self.repo_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
         self.llm = llm_engine
+        self._ensure_schema()
+
+    def _ensure_schema(self):
+        """DB 스키마 검증 및 자동 초기화 (QA 관점의 무결성 확보)"""
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS blog_tasks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    issue_id INTEGER UNIQUE NOT NULL,
+                    file_path TEXT NOT NULL,
+                    status_id INTEGER DEFAULT 1,
+                    ai_result TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.commit()
 
     def _run_cmd(self, cmd):
-        """기본 명령 실행"""
+        """기본 명령 실행 (Shell 인터프리터 사용)"""
         return subprocess.run(
             cmd, shell=True, capture_output=True, text=True,
             cwd=self.repo_root, encoding='utf-8'
         )
 
     def _run_cmd_safe(self, cmd, error_msg="Command failed"):
-        """에러 핸들링이 강화된 명령 실행 (Fail-Fast)"""
+        """쉘 실행 명령의 에러 핸들링 강화"""
         result = self._run_cmd(cmd)
         if result.returncode != 0:
             raise RuntimeError(f"{error_msg}\nSTDERR: {result.stderr}")
         return result
+    
+    def _run_git_safe(self, args, error_msg="Git command failed"):
+        """리스트 형식을 사용한 안전한 Git 명령 실행 (쉘 인젝션 방어)"""
+        result = subprocess.run(
+            ['git'] + args,
+            cwd=self.repo_root,
+            capture_output=True,
+            text=True,
+            encoding='utf-8'
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"{error_msg}\nSTDERR: {result.stderr}")
+        return result
 
-    def get_issue_content(self, issue_id):
-        """이슈 본문과 코멘트를 결합하여 가공 소스 생성 (JSON 안전 파싱)"""
-        res = self._run_cmd(f"gh issue view {issue_id} --json body,comments")
+    # ============================================================================
+    # 1. 태스크 동기화 (GitHub Issue -> Local DB)
+    # ============================================================================
+    def sync_new_issues(self):
+        res = self._run_cmd('gh issue list --label "to-blog" --state open --json number,title')
         if res.returncode != 0:
-            raise RuntimeError(f"Failed to fetch issue #{issue_id}: {res.stderr}")
+            raise RuntimeError(f"Failed to fetch issues: {res.stderr}")
         
         try:
-            data = json.loads(res.stdout)
+            issues = json.loads(res.stdout)
         except json.JSONDecodeError as e:
-            raise RuntimeError(f"Invalid JSON from gh CLI for issue #{issue_id}: {e}")
-        
-        combined_content = f"Main Intent: {data.get('body', '')}\n\n"
-        for comment in data.get('comments', []):
-            combined_content += f"Additional Detail: {comment.get('body', '')}\n"
-        
-        return combined_content
+            raise RuntimeError(f"Invalid JSON from gh CLI: {e}")
 
-    def update_status(self, issue_id, status_id):
-        """작업 상태 업데이트 (컨텍스트 매니저 사용)"""
+        if not issues:
+            print("ℹ️ No new signals detected.")
+            return
+
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
-            cur.execute(
-                "UPDATE blog_tasks SET status_id = ?, updated_at = CURRENT_TIMESTAMP WHERE issue_id = ?",
-                (status_id, issue_id)
-            )
+            for issue in issues:
+                issue_id = issue['number']
+                cur.execute("SELECT 1 FROM blog_tasks WHERE issue_id = ?", (issue_id,))
+                if cur.fetchone():
+                    continue
+
+                # 정밀한 파일명 정제 (파일명 보안 및 유효성 확보)
+                date_str = datetime.now().strftime("%Y-%m-%d")
+                title = issue.get('title', f"untitled-{issue_id}")
+                clean_title = re.sub(r'[^a-zA-Z0-9가-힣]+', '-', title)
+                clean_title = re.sub(r'-+', '-', clean_title).strip('-').lower()[:50].rstrip('-')
+                
+                file_path = f"_posts/{date_str}-{clean_title}.md"
+                full_path = os.path.normpath(os.path.join(self.repo_root, file_path))
+
+                if os.path.exists(full_path):
+                    file_path = f"_posts/{date_str}-{clean_title}-issue-{issue_id}.md"
+                    full_path = os.path.normpath(os.path.join(self.repo_root, file_path))
+
+                # 경로 보안 검증 (일관된 repo_root 사용)
+                if not full_path.startswith(self.repo_root):
+                    print(f"⚠️ Security Alert: Blocked invalid path {file_path}")
+                    continue
+
+                os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                template_content = f"""---
+layout: post
+title: "{title}"
+date: {datetime.now().strftime("%Y-%m-%d %H:%M:%S +0900")}
+categories: []
+tags: []
+---
+
+"""
+                with open(full_path, 'w', encoding='utf-8') as f:
+                    f.write(template_content)
+
+                cur.execute(
+                    "INSERT INTO blog_tasks (issue_id, file_path, status_id) VALUES (?, ?, 1)",
+                    (issue_id, file_path)
+                )
+                print(f"🆕 Registered: Issue #{issue_id} -> {file_path}")
             conn.commit()
 
+    # ============================================================================
+    # 2. 가공 및 배포 (Claude Orchestration)
+    # ============================================================================
     def process_task(self):
-        # 1. 대상 조회
+        self.sync_new_issues()
+
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.cursor()
             cur.execute("SELECT issue_id, file_path FROM blog_tasks WHERE status_id IN (1, 2)")
@@ -64,67 +138,80 @@ class BlogOrchestrator:
         for issue_id, file_path in tasks:
             try:
                 print(f"🤖 Processing Issue #{issue_id}...")
-                
-                # 2. 데이터 수집
                 source_content = self.get_issue_content(issue_id)
-                
-                # 3. 경로 보안 검증 및 템플릿 로드
                 full_path = os.path.normpath(os.path.join(self.repo_root, file_path))
-                if not full_path.startswith(self.repo_root):
-                    raise ValueError(f"Security Alert: Path escape detected - {file_path}")
-                if not os.path.exists(full_path):
-                    raise FileNotFoundError(f"Template not found: {full_path}")
                 
-                with open(full_path, 'r', encoding='utf-8-sig', errors='replace') as f:
+                if not full_path.startswith(self.repo_root) or not os.path.exists(full_path):
+                    raise ValueError(f"Invalid or missing template: {file_path}")
+
+                with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
                     template = f.read()
-                
-                # 4. LLM 가공
+
+                # Claude 가공 요청
                 final_md = self.llm.generate_post(template, source_content)
-                
-                # 5. 파일 업데이트
+
                 with open(full_path, 'w', encoding='utf-8') as f:
                     f.write(final_md)
+
+                # Git Flow (안전한 리스트 방식 호출)
+                self._run_git_safe(['add', file_path], "Git add failed")
+                self._run_git_safe(['commit', '-m', f'Auto: Post #{issue_id} finalized'], "Commit failed")
                 
-                # 6. Git 워크플로우 (안전한 실행)
-                self._run_cmd_safe(f"git add {file_path}", "Git add failed")
-                self._run_cmd_safe(
-                    f'git commit -m "Auto: Blog Post #{issue_id} finalized"',
-                    "Git commit failed"
-                )
-                self._run_cmd_safe(
-                    f"git push origin $(git branch --show-current)",
-                    "Git push failed"
-                )
-                
-                # 7. PR 생성 (중복 방지 로직)
                 current_branch = self._run_cmd("git branch --show-current").stdout.strip()
+                self._run_git_safe(['push', 'origin', current_branch], "Push failed")
+
+                # PR 생성 (회복 탄력성 적용: 실패해도 전체 프로세스 유지)
                 pr_check = self._run_cmd(f'gh pr list --head {current_branch} --json number')
-                
                 if pr_check.stdout.strip() == "[]":
-                    self._run_cmd_safe(
-                        f'gh pr create --title "Blog: #{issue_id} 가공완료" '
-                        f'--body "에이전트 자동 생성" --label "auto-post"',
-                        "PR creation failed"
-                    )
-                else:
-                    print(f"ℹ️ PR already exists for branch {current_branch}")
+                    try:
+                        self._run_cmd_safe(
+                            f'gh pr create --title "Blog: #{issue_id} 가공완료" '
+                            f'--body "AI 자동 생성" --label "auto-post"',
+                            "PR creation failed"
+                        )
+                    except RuntimeError as e:
+                        print(f"⚠️ PR creation warning: {e}")
                 
-                self.update_status(issue_id, 4) # COMPLETED
+                self.update_status(issue_id, 4)
                 print(f"✅ Issue #{issue_id} done.")
-                
+
             except Exception as e:
-                print(f"❌ Critical Error on Issue #{issue_id}: {e}")
-                self.update_status(issue_id, 1) # 리셋
+                print(f"❌ Error on Issue #{issue_id}: {e}")
+                self.update_status(issue_id, 1)
+
+    def get_issue_content(self, issue_id):
+        res = self._run_cmd(f"gh issue view {issue_id} --json body,comments")
+        if res.returncode != 0:
+            raise RuntimeError(f"GH Fetch error: {res.stderr}")
+        
+        try:
+            data = json.loads(res.stdout)
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"Invalid JSON for issue #{issue_id}: {e}")
+        
+        content = f"Main: {data.get('body', '')}\n"
+        for c in data.get('comments', []): 
+            content += f"Comment: {c.get('body', '')}\n"
+        return content
+
+    def update_status(self, issue_id, status_id):
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE blog_tasks SET status_id = ?, updated_at = CURRENT_TIMESTAMP WHERE issue_id = ?",
+                (status_id, issue_id)
+            )
+            conn.commit()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["process", "watchdog"], required=True)
     args = parser.parse_args()
 
-    # 나중에 DeepSeekProvider() 등으로 교체 가능
-    engine = ClaudeCLIProvider() 
-    orchestrator = BlogOrchestrator(engine)
+    # Orchestrator Ignition
+    orchestrator = BlogOrchestrator(ClaudeCLIProvider())
 
     if args.mode == "process":
         orchestrator.process_task()
-    # watchdog 등 기타 모드 생략
+    elif args.mode == "watchdog":
+        orchestrator.sync_new_issues()
