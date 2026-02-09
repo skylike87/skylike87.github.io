@@ -1,0 +1,26 @@
+name: Daily Insight Issue Creator
+
+on:
+  schedule:
+    # 한국 시간(KST) 오전 5시는 UTC 기준 전날 오후 8시입니다.
+    - cron: '0 20 * * *'
+  workflow_dispatch: # 수동으로 테스트하고 싶을 때 사용
+
+jobs:
+  create-issue:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Create Daily Issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "[Daily Insight] ${{ steps.date.outputs.date }}" \
+            --body "## 오늘 얻은 정보와 통찰을 이곳에 자유롭게 기록해주세요. 🤖 에이전트가 이 내용을 바탕으로 블로그 포스팅을 생성합니다." \
+            --label "to-blog"

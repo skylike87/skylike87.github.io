@@ -25,3 +25,21 @@ package-lock.json
 # Misc
 _sass/vendors
 assets/js/dist
+
+# 보안 및 개인 설정
+_agent/.env
+*.log
+
+# 로컬 에이전트 데이터베이스
+_agent/*.db
+
+# 루비/제킬 관련 (배포 결과물 등)
+_site/
+.sass-cache/
+.jekyll-cache/
+.jekyll-metadata
+vendor/
+node_modules/
+
+# OS 관련
+.DS_Store
