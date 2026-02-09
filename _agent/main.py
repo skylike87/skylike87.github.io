@@ -125,7 +125,7 @@ tags: []
             conn.commit()
 
     # ============================================================================
-    # 2. 가공 및 배포 (Claude Orchestration)
+    # 2. 가공 및 배포 (Direct Push to Master)
     # ============================================================================
     def process_task(self):
         self.sync_new_issues()
@@ -137,48 +137,35 @@ tags: []
 
         for issue_id, file_path in tasks:
             try:
-                print(f"🤖 Processing Issue #{issue_id}...")
+                print(f"🤖 Processing Issue #{issue_id} and pushing to master...")
                 source_content = self.get_issue_content(issue_id)
                 full_path = os.path.normpath(os.path.join(self.repo_root, file_path))
                 
-                if not full_path.startswith(self.repo_root) or not os.path.exists(full_path):
-                    raise ValueError(f"Invalid or missing template: {file_path}")
+                if not os.path.exists(full_path):
+                    raise FileNotFoundError(f"Template not found: {file_path}")
 
                 with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
                     template = f.read()
 
-                # Claude 가공 요청
+                # Claude 가공 요청 (강화된 페르소나 적용 버전)
                 final_md = self.llm.generate_post(template, source_content)
 
                 with open(full_path, 'w', encoding='utf-8') as f:
                     f.write(final_md)
 
-                # Git Flow (안전한 리스트 방식 호출)
-                self._run_git_safe(['add', file_path], "Git add failed")
-                # self._run_git_safe(['commit', '-m', f'Auto: Post #{issue_id} finalized'], "Commit failed")
-                self._run_git_safe(['commit', '-m', 'docs: register new blog templates'], "Commit failed")
-
+                # [Pragmatic Git Flow] 바로 마스터에 푸시
                 current_branch = self._run_cmd("git branch --show-current").stdout.strip()
-                self._run_git_safe(['push', 'origin', current_branch], "Push failed")
-
-                # PR 생성 (회복 탄력성 적용: 실패해도 전체 프로세스 유지)
-                pr_check = self._run_cmd(f'gh pr list --head {current_branch} --json number')
-                if pr_check.stdout.strip() == "[]":
-                    try:
-                        self._run_cmd_safe(
-                            f'gh pr create --title "Blog: #{issue_id} 가공완료" '
-                            f'--body "AI 자동 생성" --label "auto-post"',
-                            "PR creation failed"
-                        )
-                    except RuntimeError as e:
-                        print(f"⚠️ PR creation warning: {e}")
                 
-                self.update_status(issue_id, 4)
-                print(f"✅ Issue #{issue_id} done.")
+                self._run_git_safe(['add', file_path])
+                self._run_git_safe(['commit', '-m', f'docs: automated technical post #{issue_id}'], "Commit failed")
+                self._run_git_safe(['push', 'origin', current_branch], "Push failed")
+                
+                self.update_status(issue_id, 4) # COMPLETED
+                print(f"✅ Issue #{issue_id} successfully pushed to {current_branch}.")
 
             except Exception as e:
                 print(f"❌ Error on Issue #{issue_id}: {e}")
-                self.update_status(issue_id, 1)
+                self.update_status(issue_id, 1) # RETRY 가능하게 복구
 
     def get_issue_content(self, issue_id):
         res = self._run_cmd(f"gh issue view {issue_id} --json body,comments")
