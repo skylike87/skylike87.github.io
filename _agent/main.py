@@ -155,8 +155,9 @@ tags: []
 
                 # Git Flow (안전한 리스트 방식 호출)
                 self._run_git_safe(['add', file_path], "Git add failed")
-                self._run_git_safe(['commit', '-m', f'Auto: Post #{issue_id} finalized'], "Commit failed")
-                
+                # self._run_git_safe(['commit', '-m', f'Auto: Post #{issue_id} finalized'], "Commit failed")
+                self._run_git_safe(['commit', '-m', 'docs: register new blog templates'], "Commit failed")
+
                 current_branch = self._run_cmd("git branch --show-current").stdout.strip()
                 self._run_git_safe(['push', 'origin', current_branch], "Push failed")
 

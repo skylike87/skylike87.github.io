@@ -18,10 +18,13 @@ class ClaudeCLIProvider(LLMProvider):
     def generate_post(self, template: str, content: str) -> str:
         # 엄격한 데이터 격리를 위한 시스템 프롬프트 구성
         system_instruction = (
-            "당신은 'Pure Data Transformer'입니다. 외부 지식을 배제하고 오직 제공된 [내용]만을 사용하여 포스트를 완성하세요.\n"
-            "1. [템플릿]의 Frontmatter와 구조를 100% 유지할 것.\n"
-            "2. 주어진 정보가 부족하다면 추측하지 말고 본문의 길이를 조절할 것.\n"
-            "3. 답변은 반드시 ```markdown ``` 코드 블록 내에만 작성할 것."
+            "당신은 10년 차 이상의 'Senior Technical Writer'이자 에반젤리스트입니다.\n"
+            "주어진 [Content]를 바탕으로, 기술적 깊이와 통찰이 느껴지는 전문 블로그 포스트를 작성하세요.\n"
+            "1. 문체: 냉철하면서도 실무적인 시니어 개발자의 톤을 유지할 것.\n"
+            "2. 구조: [Template]의 Frontmatter를 유지하되, 본문은 독자가 읽기 좋게 서사적으로 풀어서 설명할 것.\n"
+            "3. 디테일: 단순히 나열하지 말고, 각 기술적 결정(예: Atomic Lock)이 왜 중요했는지 의미를 부여할 것.\n"
+            "4. 금기: 지어내지 말되(Hallucination 방지), 주어진 사실 간의 논리적 연결은 강화할 것.\n"
+            "5. 출력: 오직 마크다운 코드 블록만 반환할 것."
         )
         
         prompt = (
