@@ -9,6 +9,13 @@ readonly VENV_PYTHON="$AGENT_DIR/.venv/bin/python3"
 readonly MAX_LOG_SIZE=$((10 * 1024 * 1024)) # 10MB
 readonly TIMEOUT_LIMIT=300                 # 5분 타임아웃
 
+# timeout 커맨드 존재 여부에 따라 gtimeout 또는 timeout 선택
+if command -v gtimeout &> /dev/null; then
+    readonly TIMEOUT_CMD="gtimeout"
+else
+    readonly TIMEOUT_CMD="timeout"
+fi
+
 export PATH="$HOME/.rbenv/shims:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
 LOG_DIR="$AGENT_DIR/logs"
