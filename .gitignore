@@ -29,6 +29,7 @@ assets/js/dist
 # 보안 및 개인 설정
 _agent/.env
 *.log
+_agent/config/persona.txt
 
 # 로컬 에이전트 데이터베이스
 _agent/*.db
