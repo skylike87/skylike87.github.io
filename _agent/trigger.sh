@@ -1,69 +1,119 @@
-#!/zsh
+#!/bin/zsh
 
 # ============================================================================
-# 1. 환경 설정 및 경로 정의 (최상단 배치 필수)
+# 1. 환경 설정 및 경로 정의
 # ============================================================================
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-
-# 스크립트 위치 기준 경로 설정 (가장 먼저 정의되어야 함)
 AGENT_DIR="${0:A:h}"
 REPO_ROOT="${AGENT_DIR:h}"
+
+# rbenv 및 시스템 경로 최적화 (shims 경로를 최우선으로)
+export PATH="$HOME/.rbenv/shims:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
 LOG_DIR="$AGENT_DIR/logs"
 LOG_FILE="$LOG_DIR/trigger.log"
-LOCK_FILE="$AGENT_DIR/.trigger.lock"
+LOCK_DIR="$AGENT_DIR/blog_agent.lock"
 ENV_FILE="$AGENT_DIR/.env"
+PYTHON_SCRIPT="$AGENT_DIR/main.py"
 
 mkdir -p "$LOG_DIR"
 
+# 로그 출력 래퍼 함수
+log_info() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] INFO: $1" >> "$LOG_FILE"; }
+log_error() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $1" >> "$LOG_FILE"; }
+
 # ============================================================================
-# 2. 환경 변수 로드 (.env)
+# 2. 로그 로테이션 (10MB 초과 시 백업)
+# ============================================================================
+if [[ -f "$LOG_FILE" ]]; then
+    LOG_SIZE=$(stat -f%z "$LOG_FILE" 2>/dev/null || echo 0)
+    if (( LOG_SIZE > 10485760 )); then
+        mv "$LOG_FILE" "$LOG_FILE.$(date +%Y%m%d_%H%M%S).old"
+        log_info "Log rotated due to size limit (10MB)."
+    fi
+fi
+
+# ============================================================================
+# 3. 원자적 Lock 및 Stale Lock 방어
+# ============================================================================
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    if [[ -f "$LOCK_DIR/pid" ]]; then
+        OLD_PID=$(cat "$LOCK_DIR/pid" 2>/dev/null)
+        if ! kill -0 "$OLD_PID" 2>/dev/null; then
+            log_info "Removing stale lock (PID $OLD_PID is not running)."
+            rm -rf "$LOCK_DIR"
+            mkdir "$LOCK_DIR"
+        else
+            log_info "⚠️ Agent already running (PID: $OLD_PID). Exiting."
+            exit 0
+        fi
+    else
+        rm -rf "$LOCK_DIR"
+        mkdir "$LOCK_DIR"
+    fi
+fi
+echo $$ > "$LOCK_DIR/pid"
+
+# 개선된 trap: EXIT 시점에 락 디렉토리만 안전하게 제거
+trap "rm -rf '$LOCK_DIR'" EXIT INT TERM
+
+# ============================================================================
+# 4. 환경 변수 로드 (공백, 따옴표 및 마지막 줄 처리 강화)
 # ============================================================================
 if [[ -f "$ENV_FILE" ]]; then
-    # 주석 제외, 빈 줄 제외하고 export 실행
-    export $(grep -v '^#' "$ENV_FILE" | xargs)
-    echo "✅ GH_TOKEN loaded from .env" >> "$LOG_FILE"
+    while IFS='=' read -r key value || [[ -n "$key" ]]; do
+        [[ "$key" =~ ^[[:space:]]*# || -z "$key" ]] && continue
+        value="${value%\"}"
+        value="${value#\"}"
+        export "$key=$value"
+    done < "$ENV_FILE"
+    log_info "✅ Environment variables loaded safely."
 else
-    echo "❌ Error: .env file not found at $ENV_FILE" >> "$LOG_FILE"
-    # 토큰이 없으면 이후 gh 명령어가 실패하므로 여기서 종료하거나 예외처리 필요
-fi
-
-# 디버깅용 (보안을 위해 앞 4자리만 출력)
-if [[ -n "$GH_TOKEN" ]]; then
-    echo "Debug: GH_TOKEN starts with ${GH_TOKEN:0:4}..." >> "$LOG_FILE"
+    log_error ".env file not found. Termination."
+    exit 1
 fi
 
 # ============================================================================
-# 3. 중복 실행 방지 및 사전 체크
+# 5. 실행 환경 사전 검증 (Python 및 GH CLI)
 # ============================================================================
-if [[ -f "$LOCK_FILE" ]]; then
-    echo "[$(date)] ⚠️ Agent already running. Exiting." >> "$LOG_FILE"
-    exit 0
+if [[ ! -f "$PYTHON_SCRIPT" ]]; then
+    log_error "main.py not found at $PYTHON_SCRIPT"
+    exit 1
 fi
 
-touch "$LOCK_FILE"
-trap "rm -f $LOCK_FILE" EXIT
+if ! gh auth status &>/dev/null; then
+    log_error "GitHub CLI authentication failed. Please check GH_TOKEN."
+    exit 1
+fi
 
 # ============================================================================
-# 4. Git 동기화 및 에이전트 실행
+# 6. 메인 로직 실행 (Fail-Fast 적용)
 # ============================================================================
-cd "$REPO_ROOT" || exit 1
+cd "$REPO_ROOT" || { log_error "Failed to enter REPO_ROOT"; exit 1; }
 CURRENT_BRANCH=$(git branch --show-current)
 
-echo "--- Run: $(date '+%Y-%m-%d %H:%M:%S') (Branch: $CURRENT_BRANCH) ---" >> "$LOG_FILE"
+log_info "--- Starting Task (Branch: $CURRENT_BRANCH) ---"
 
-# Git Pull (인증된 GH_TOKEN 활용)
-git pull --rebase origin "$CURRENT_BRANCH" >> "$LOG_FILE" 2>&1
-
-# 신규 신호 확인 및 에이전트 호출
-NEW_SIGNALS=$(gh issue list --label "to-blog" --state open --json number,comments --jq '.[] | select(.comments | length > 0) | .number')
-
-if [[ -n "$NEW_SIGNALS" ]]; then
-    echo "🔔 Signal detected ($NEW_SIGNALS). Running PROCESS mode..." >> "$LOG_FILE"
-    python3 "$AGENT_DIR/main.py" --mode process >> "$LOG_FILE" 2>&1
-else
-    echo "ℹ️ No signals. Running WATCHDOG mode..." >> "$LOG_FILE"
-    python3 "$AGENT_DIR/main.py" --mode watchdog >> "$LOG_FILE" 2>&1
+if ! git pull --rebase origin "$CURRENT_BRANCH" >> "$LOG_FILE" 2>&1; then
+    log_error "Git pull failed. Manual conflict resolution might be needed."
+    exit 1
 fi
 
-echo "--- Finished ---" >> "$LOG_FILE"
+# 신규 신호 확인
+NEW_SIGNALS=$(gh issue list --label "to-blog" --state open --json number,comments --jq '.[] | select(.comments | length > 0) | .number' | tr '\n' ' ')
 
+if [[ -n "${NEW_SIGNALS// /}" ]]; then
+    log_info "🔔 Signal detected: Issue #$NEW_SIGNALS. Starting PROCESS mode."
+    # Python 실행 실패 시 로그를 남기고 종료 코드 1 반환
+    if ! python3 "$PYTHON_SCRIPT" --mode process >> "$LOG_FILE" 2>&1; then
+        log_error "Python PROCESS mode failed with exit code $?"
+        exit 1
+    fi
+else
+    log_info "ℹ️ No comments found. Starting WATCHDOG mode."
+    if ! python3 "$PYTHON_SCRIPT" --mode watchdog >> "$LOG_FILE" 2>&1; then
+        log_error "Python WATCHDOG mode failed with exit code $?"
+        exit 1
+    fi
+fi
+
+log_info "--- Task Finished Successfully ---"

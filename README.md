@@ -1,84 +1,45 @@
-<!-- markdownlint-disable-next-line -->
-<div align="center">
+# 🚀 Automated Quant-IT Odyssey: The Art of Agent Orchestration
 
-  <!-- markdownlint-disable-next-line -->
-  # Chirpy Jekyll Theme
+This repository is more than a blog—it is a live laboratory where **7+ years of professional expertise** (5 years in Java Development & 2 years in Quality Assurance) converge with the future of AI.
 
-  A minimal, responsive, and feature-rich Jekyll theme for technical writing.
+In an era where "just coding" is no longer enough, I focus on **Orchestrating AI Agents** to build resilient, high-quality autonomous systems.
 
-  [![CI](https://img.shields.io/github/actions/workflow/status/cotes2020/jekyll-theme-chirpy/ci.yml?logo=github)][ci]&nbsp;
-  [![Codacy Badge](https://img.shields.io/codacy/grade/4e556876a3c54d5e8f2d2857c4f43894?logo=codacy)][codacy]&nbsp;
-  [![GitHub license](https://img.shields.io/github/license/cotes2020/jekyll-theme-chirpy?color=goldenrod)][license]&nbsp;
-  [![Gem Version](https://img.shields.io/gem/v/jekyll-theme-chirpy?&logo=RubyGems&logoColor=ghostwhite&label=gem&color=orange)][gem]&nbsp;
-  [![Open in Dev Containers](https://img.shields.io/badge/Dev_Containers-Open-deepskyblue?logo=linuxcontainers)][open-container]
+## 🤖 The Orchestration Engine: Dual-LLM Pipeline
 
-  [**Live Demo** →][demo]
+Modern engineering is about choosing the right tool for the right task. My blog is powered by a strategic, multi-layered AI pipeline:
 
-  [![Devices Mockup](https://chirpy-img.netlify.app/commons/devices-mockup.png)][demo]
+* **Logic & Intent Handler (Llama 3.1 8B)**: Leveraging its speed for intent recognition and initial data validation. This reflects my **QA background**—ensuring every signal is valid before processing.
+* **Content Architect (Claude 3.5/3.7 Sonnet)**: Transforming validated signals into high-fidelity technical posts, ensuring the "Definition of Done" is met with professional-grade prose.
 
-</div>
+---
 
-## Features
+## 🛠️ Technical Arsenal
 
-- Dark Theme
-- Localized UI language
-- Pinned Posts on Home Page
-- Hierarchical Categories
-- Trending Tags
-- Table of Contents
-- Last Modified Date
-- Syntax Highlighting
-- Mathematical Expressions
-- Mermaid Diagrams & Flowcharts
-- Dark Mode Images
-- Embed Media
-- Comment Systems
-- Built-in Search
-- Atom Feeds
-- PWA
-- Web Analytics
-- SEO & Performance Optimization
+### **Automation & Orchestration**
 
-## Documentation
+* **The Brain**: Python-based Orchestrator using a Strategy Pattern for modular LLM integration.
+* **The Heart**: macOS `launchd` + Robust **Zsh Bootstrapper** (`trigger.sh`) featuring **Atomic Locking** and **Fail-Fast** error handling.
+* **Quality & Stability**: Integrated QA principles—automated state tracking via SQLite3 and idempotent workflow design.
 
-To learn how to use, develop, and upgrade the project, please refer to the [Wiki][wiki].
+### **Blog Infrastructure**
 
-## Contributing
+* **Jekyll Chirpy Theme**: Optimized for technical readability and SEO.
+* **CI/CD**: GitHub Actions for automated "Daily-Signal" generation and site deployment.
 
-Contributions (_pull requests_, _issues_, and _discussions_) are what make the open-source community such an amazing place
-to learn, inspire, and create. Any contributions you make are greatly appreciated.
-For details, see the "[Contributing Guidelines][contribute-guide]".
+---
 
-## Credits
+## ⚙️ The Workflow: From Signal to Publication
 
-### Contributors
+1. **Signal**: A GitHub Action generates a "Daily-Signal" issue every morning.
+2. **Input**: I provide raw technical insights or "struggle logs" as comments.
+3. **Trigger**: Local `launchd` polling detects the signal  initiates the **Orchestrator**.
+4. **Processing**: **Llama 8B** validates the intent  **Claude Sonnet** crafts the narrative  Auto-PR.
+5. **Quality Check**: I review the PR (Final QA) and merge to deploy.
 
-Thanks to [all the contributors][contributors] involved in the development of the project!
+---
 
-[![all-contributors](https://contrib.rocks/image?repo=cotes2020/jekyll-theme-chirpy&columns=16)][contributors]
-<sub> — Made with [contrib.rocks](https://contrib.rocks)</sub>
+> "The future belongs to those who can orchestrate the symphony of AI agents, not just those who can write the notes."
 
-### Third-Party Assets
+### 📬 Connect with Me
 
-This project is built on the [Jekyll][jekyllrb] ecosystem and some [great libraries][lib], and is developed using [VS Code][vscode] as well as tools provided by [JetBrains][jetbrains] under a non-commercial open-source software license.
-
-The avatar and favicon for the project's website are from [ClipartMAX][clipartmax].
-
-## License
-
-This project is published under [MIT License][license].
-
-[gem]: https://rubygems.org/gems/jekyll-theme-chirpy
-[ci]: https://github.com/cotes2020/jekyll-theme-chirpy/actions/workflows/ci.yml?query=event%3Apush+branch%3Amaster
-[codacy]: https://app.codacy.com/gh/cotes2020/jekyll-theme-chirpy/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade
-[license]: https://github.com/cotes2020/jekyll-theme-chirpy/blob/master/LICENSE
-[open-container]: https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/cotes2020/jekyll-theme-chirpy
-[jekyllrb]: https://jekyllrb.com/
-[clipartmax]: https://www.clipartmax.com/middle/m2i8b1m2K9Z5m2K9_ant-clipart-childrens-ant-cute/
-[demo]: https://cotes2020.github.io/chirpy-demo/
-[wiki]: https://github.com/cotes2020/jekyll-theme-chirpy/wiki
-[contribute-guide]: https://github.com/cotes2020/jekyll-theme-chirpy/blob/master/docs/CONTRIBUTING.md
-[contributors]: https://github.com/cotes2020/jekyll-theme-chirpy/graphs/contributors
-[lib]: https://github.com/cotes2020/chirpy-static-assets
-[vscode]: https://code.visualstudio.com/
-[jetbrains]: https://www.jetbrains.com/?from=jekyll-theme-chirpy
+* **Blog**: [skylike87.github.io](https://skylike87.github.io)
