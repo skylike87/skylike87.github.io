@@ -1,5 +1,21 @@
 #!/bin/zsh
 
+# 프로젝트 절대 경로 추출
+AGENT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# 🎯 가상환경 내부의 파이썬 실행 파일을 직접 지칭
+# 이 경로는 가상환경을 활성화(source)하지 않아도 해당 패키지들을 다 물고 있습니다.
+VENV_PYTHON="$AGENT_DIR/.venv/bin/python3"
+
+# 🔍 파이썬 바이너리 존재 여부 확인 (Fail-fast)
+if [ ! -f "$VENV_PYTHON" ]; then
+    echo "[$(date)] ❌ Error: Python Venv not found at $VENV_PYTHON" >> "$AGENT_DIR/logs/trigger.log"
+    exit 1
+fi
+
+# 실행
+$VENV_PYTHON "$AGENT_DIR/main.py" --mode process >> "$AGENT_DIR/logs/trigger.log" 2>&1
+
 # ============================================================================
 # 1. 환경 설정 및 경로 정의
 # ============================================================================
@@ -73,10 +89,10 @@ else
 fi
 
 # ============================================================================
-# 5. 실행 환경 사전 검증 (Python 및 GH CLI)
+# 5. 실행 환경 사전 검증 (Venv Python 추가)
 # ============================================================================
-if [[ ! -f "$PYTHON_SCRIPT" ]]; then
-    log_error "main.py not found at $PYTHON_SCRIPT"
+if [[ ! -f "$VENV_PYTHON" ]]; then
+    log_error "Python Virtual Environment not found at $VENV_PYTHON. Run 'python3 -m venv .venv' first."
     exit 1
 fi
 
@@ -86,16 +102,22 @@ if ! gh auth status &>/dev/null; then
 fi
 
 # ============================================================================
-# 6. 메인 로직 실행 (Fail-Fast 적용)
+# 6. 메인 로직 실행 (VENV_PYTHON 사용)
 # ============================================================================
-cd "$REPO_ROOT" || { log_error "Failed to enter REPO_ROOT"; exit 1; }
-CURRENT_BRANCH=$(git branch --show-current)
-
-log_info "--- Starting Task (Branch: $CURRENT_BRANCH) ---"
-
-if ! git pull --rebase origin "$CURRENT_BRANCH" >> "$LOG_FILE" 2>&1; then
-    log_error "Git pull failed. Manual conflict resolution might be needed."
-    exit 1
+if [[ -n "${NEW_SIGNALS// /}" ]]; then
+    log_info "🔔 Signal detected: Issue #$NEW_SIGNALS. Starting PROCESS mode."
+    # 🎯 여기를 $VENV_PYTHON으로 교체!
+    if ! "$VENV_PYTHON" "$PYTHON_SCRIPT" --mode process >> "$LOG_FILE" 2>&1; then
+        log_error "Python PROCESS mode failed with exit code $?"
+        exit 1
+    fi
+else
+    log_info "ℹ️ No comments found. Starting WATCHDOG mode."
+    # 🎯 여기도 $VENV_PYTHON으로 교체!
+    if ! "$VENV_PYTHON" "$PYTHON_SCRIPT" --mode watchdog >> "$LOG_FILE" 2>&1; then
+        log_error "Python WATCHDOG mode failed with exit code $?"
+        exit 1
+    fi
 fi
 
 # 신규 신호 확인

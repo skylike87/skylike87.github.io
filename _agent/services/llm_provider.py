@@ -2,6 +2,9 @@ import subprocess
 import os
 import re
 from abc import ABC, abstractmethod
+from dotenv import load_dotenv
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 class LLMProvider(ABC):
     @abstractmethod
