@@ -4,10 +4,22 @@ import subprocess
 import argparse
 import json
 import re
+import logging
+import sys
+
 from datetime import datetime
 from services.llm_provider import ClaudeCLIProvider, LLMProvider
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# main.py 상단에 위치해야 합니다.
+logging.basicConfig(
+    level=logging.INFO, # 또는 logging.DEBUG
+    format='[%(asctime)s] %(levelname)s: %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout) # 🎯 쉘의 리다이렉션을 타기 위해 필요
+    ]
+)
 
 class BlogOrchestrator:
     def __init__(self, llm_engine: LLMProvider):
