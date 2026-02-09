@@ -1,8 +1,11 @@
 import subprocess
 import os
 import re
+import logging
 from abc import ABC, abstractmethod
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -37,6 +40,9 @@ class ClaudeCLIProvider(LLMProvider):
         )
         
         prompt = f"{system_instruction}\n\n[Template]\n{template}\n\n[Content]\n{content}"
+        
+        logger.info("🚀 [LLM] Prompt generation completed. Sending to Claude...")
+        logger.debug(f"--- [FULL PROMPT START] ---\n{prompt}\n--- [FULL PROMPT END] ---")
         
         try:
             cmd = [
